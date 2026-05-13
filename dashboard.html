@@ -534,6 +534,10 @@ function sendFeedCommand() {
 function requestStock() {
     const correlationId = `stock-${Date.now()}`;
 
+    // Gunakan TextEncoder untuk mengganti Buffer di dalam Browser
+    const encoder = new TextEncoder();
+    const correlationDataBytes = encoder.encode(correlationId);
+
     client.publish('aquarium/request/stock', JSON.stringify({
         request: 'get_stock',
         from:    'Web_Dashboard',
@@ -542,7 +546,7 @@ function requestStock() {
         qos: 1,
         properties: {
             responseTopic:   RESPONSE_TOPIC,
-            correlationData: Buffer.from(correlationId)
+            correlationData: correlationDataBytes // <- Ubah bagian ini
         }
     });
 
