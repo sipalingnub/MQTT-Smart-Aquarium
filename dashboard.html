@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🐠 Smart Aquarium Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.0.5/mqtt.min.js"></script>
+<style>
+  :root {
+    --bg:       #0d1117;
+    --surface:  #161b22;
+    --surface2: #1c2128;
+    --border:   #30363d;
+    --green:    #3fb950;
+    --cyan:     #39d353;
+    --blue:     #58a6ff;
+    --yellow:   #d29922;
+    --red:      #f85149;
+    --text:     #e6edf3;
+    --muted:    #7d8590;
+    --radius:   12px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    min-height: 100vh;
+    padding: 20px;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  header h1 { font-size: 1.5rem; }
+  header h1 span { color: var(--green); }
+
+  #conn-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: .85rem;
+    color: var(--muted);
+  }
+
+  #conn-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--red);
+    transition: background .3s;
+  }
+
+  #conn-dot.connected { background: var(--green); }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+  }
+
+  .card h2 {
+    font-size: .8rem;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  .metric {
+    font-size: 2.4rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .metric.ph   { color: var(--blue); }
+  .metric.temp { color: var(--cyan); }
+  .metric.ok   { color: var(--green); }
+  .metric.warn { color: var(--yellow); }
+  .metric.crit { color: var(--red); }
+
+  .sub-label {
+    font-size: .8rem;
+    color: var(--muted);
+    margin-top: 6px;
+  }
+
+  .status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    font-size: .85rem;
+  }
+
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--red);
+    flex-shrink: 0;
+    transition: background .3s;
+  }
+
+  .dot.online  { background: var(--green); }
+  .dot.offline { background: var(--red);   }
+
+  /* Stock bar */
+  .stock-bar-wrap {
+    margin-top: 14px;
+  }
+
+  .stock-bar-bg {
+    height: 14px;
+    background: var(--surface2);
+    border-radius: 7px;
+    overflow: hidden;
+    margin-bottom: 6px;
+  }
+
+  #stock-fill {
+    height: 100%;
+    background: var(--green);
+    border-radius: 7px;
+    transition: width .5s ease, background .5s;
+    width: 0%;
+  }
+
+  /* Alerts */
+  #alert-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  #alert-list li {
+    background: var(--surface2);
+    border-left: 3px solid var(--red);
+    border-radius: 0 8px 8px 0;
+    padding: 8px 12px;
+    font-size: .85rem;
+    animation: slideIn .3s ease;
+  }
+
+  #alert-list li.warning {
+    border-left-color: var(--yellow);
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(-10px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  .no-alert {
+    color: var(--green);
+    font-size: .9rem;
+    padding: 8px 0;
+  }
+
+  /* Controls */
+  .control-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+
+  button {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: .9rem;
+    transition: background .2s, border-color .2s;
+  }
+
+  button:hover  { background: var(--border); }
+  button.primary { background: var(--green); color: #000; border-color: var(--green); font-weight: 600; }
+  button.primary:hover { background: #2ea043; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+
+  input[type=number] {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: 8px;
+    width: 80px;
+    font-size: .9rem;
+  }
+
+  /* Feature log */
+  #feature-log {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 160px;
+    overflow-y: auto;
+    font-size: .8rem;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+  }
+
+  #feature-log li { color: var(--muted); }
+  #feature-log li span { color: var(--cyan); }
+
+  /* Metadata strip */
+  #meta-strip {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    font-size: .8rem;
+    color: var(--muted);
+    margin-top: 8px;
+  }
+
+  #meta-strip b { color: var(--blue); }
+
+  footer {
+    margin-top: 20px;
+    text-align: center;
+    font-size: .75rem;
+    color: var(--muted);
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
+  }
+
+  /* Pulse animation for live data */
+  @keyframes pulse {
+    0%   { opacity: 1; }
+    50%  { opacity: .5; }
+    100% { opacity: 1; }
+  }
+
+  .live-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    margin-right: 5px;
+    animation: pulse 1.5s infinite;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🐠 Smart Aquarium <span>Dashboard</span></h1>
+  <div id="conn-badge">
+    <div id="conn-dot"></div>
+    <span id="conn-label">Connecting…</span>
+  </div>
+</header>
+
+<div class="grid">
+  <!-- pH Card -->
+  <div class="card">
+    <h2>🔬 pH Sensor</h2>
+    <div class="metric ph" id="ph-value">—</div>
+    <div class="sub-label">Normal range: 6.8 – 8.2 pH</div>
+    <div class="status-row">
+      <div class="dot" id="sensor-dot"></div>
+      <span id="sensor-status">Unknown</span>
+    </div>
+  </div>
+
+  <!-- Temperature Card -->
+  <div class="card">
+    <h2>🌡️ Temperature</h2>
+    <div class="metric temp" id="temp-value">—</div>
+    <div class="sub-label">Normal range: 24 – 28.5 °C</div>
+    <div class="status-row">
+      <span class="live-dot" id="live-indicator" style="display:none"></span>
+      <span id="temp-label">Waiting for data…</span>
+    </div>
+  </div>
+
+  <!-- Food Stock Card -->
+  <div class="card">
+    <h2>🍽️ Food Dispenser</h2>
+    <div class="status-row" style="margin-top:0; margin-bottom:12px;">
+      <div class="dot" id="dispenser-dot"></div>
+      <span id="dispenser-status">Unknown</span>
+    </div>
+    <div class="stock-bar-wrap">
+      <div class="stock-bar-bg">
+        <div id="stock-fill"></div>
+      </div>
+      <div class="sub-label"><span id="stock-pct">—</span>% food remaining</div>
+    </div>
+  </div>
+</div>
+
+<!-- Controls -->
+<div class="grid">
+  <div class="card">
+    <h2>🎮 Controls (User_App)</h2>
+    <div class="control-row">
+      <input type="number" id="feed-amount" value="5" min="1" max="30" title="Grams to feed">
+      <button class="primary" id="btn-feed" disabled onclick="sendFeedCommand()">🐟 Feed Fish</button>
+      <button id="btn-stock" disabled onclick="requestStock()">📦 Check Stock</button>
+    </div>
+    <div class="sub-label" style="margin-top:10px">
+      Feed uses <b>QoS 2 + 30s Expiry</b> | Stock uses <b>Request-Response</b>
+    </div>
+  </div>
+
+  <!-- Metadata from User Properties -->
+  <div class="card">
+    <h2>📋 Sensor Metadata (User Properties)</h2>
+    <div id="meta-strip">
+      <span>Device ID: <b id="meta-device">—</b></span>
+      <span>Location: <b id="meta-location">—</b></span>
+      <span>Firmware: <b id="meta-firmware">—</b></span>
+    </div>
+    <div class="sub-label" style="margin-top:10px">
+      Injected via MQTT 5.0 User Properties (separate from payload)
+    </div>
+  </div>
+</div>
+
+<!-- Alerts -->
+<div class="grid">
+  <div class="card" style="grid-column: 1 / -1;">
+    <h2>⚠️ Alerts (Alert_Bot Feed)</h2>
+    <ul id="alert-list">
+      <li class="no-alert" id="no-alert-msg">✅ No alerts — system nominal</li>
+    </ul>
+  </div>
+</div>
+
+<!-- MQTT Feature Activity Log -->
+<div class="card">
+  <h2>📡 MQTT 5.0 Feature Activity Log</h2>
+  <ul id="feature-log">
+    <li>— Waiting for connection…</li>
+  </ul>
+</div>
+
+<footer>
+  Smart Aquarium MQTT · Integrasi Sistem Week 10 ·
+  Connected via WebSocket to <b>ws://localhost:9001</b> ·
+  Protocol: <b>MQTT 5.0</b>
+</footer>
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  MQTT 5.0 Web Dashboard
+//  Connects to broker via WebSocket (port 9001)
+//  Implements:
+//    Feature #2  — Wildcard subscription (aquarium/#)
+//    Feature #6  — Message Expiry on feed command
+//    Feature #8  — Request-Response (stock query)
+//    Feature #10 — Flow Control (receiveMaximum)
+//    Feature #4  — Reads User Properties from sensor msgs
+// ═══════════════════════════════════════════════════════
+
+const BROKER_WS     = 'ws://localhost:9001';
+const RESPONSE_TOPIC = `aquarium/response/dashboard_${Date.now()}`;
+let client = null;
+let msgCount = 0;
+
+function logFeature(tag, description) {
+    const ul   = document.getElementById('feature-log');
+    const li   = document.createElement('li');
+    const time = new Date().toLocaleTimeString();
+    li.innerHTML = `[${time}] <span>[${tag}]</span> ${description}`;
+    ul.insertBefore(li, ul.firstChild);
+    if (ul.children.length > 50) ul.removeChild(ul.lastChild);
+}
+
+function connect() {
+    // ── [FEATURE 10] Flow Control ─────────────────────────────────────────
+    // receiveMaximum: browser tells broker to send max 20 unACK'd messages
+    // ─────────────────────────────────────────────────────────────────────
+    client = mqtt.connect(BROKER_WS, {
+        protocolVersion: 5,
+        clientId:        `web_dashboard_${Math.random().toString(16).slice(2, 8)}`,
+        clean:           true,
+        properties: {
+            receiveMaximum: 20   // [FEATURE 10] Flow Control
+        }
+    });
+
+    client.on('connect', () => {
+        document.getElementById('conn-dot').classList.add('connected');
+        document.getElementById('conn-label').textContent = 'Connected to broker';
+        document.getElementById('btn-feed').disabled  = false;
+        document.getElementById('btn-stock').disabled = false;
+
+        // ── [FEATURE 2] Wildcard Subscription ────────────────────────────
+        // Subscribe to aquarium/# captures ALL topics under aquarium/
+        // ─────────────────────────────────────────────────────────────────
+        client.subscribe('aquarium/#', { qos: 1 });
+        logFeature('F#2 WILDCARD', 'Subscribed to aquarium/# — all topics captured');
+
+        // Subscribe to our personal response topic (for Request-Response)
+        client.subscribe(RESPONSE_TOPIC, { qos: 1 });
+        logFeature('F#8 REQ-RES', `Listening for responses on: ${RESPONSE_TOPIC.split('/').pop()}`);
+
+        logFeature('F#10 FLOW', 'receiveMaximum=20 set — backpressure active');
+    });
+
+    client.on('message', (topic, message, packet) => {
+        msgCount++;
+        let payload;
+        try { payload = JSON.parse(message.toString()); }
+        catch { return; }
+
+        // ── Route by topic ────────────────────────────────────────────────
+        if (topic === 'aquarium/sensor/ph') {
+            const v = payload.value;
+            const el = document.getElementById('ph-value');
+            el.textContent = v;
+            el.className = `metric ph ${v < 6.8 || v > 8.2 ? 'crit' : 'ok'}`;
+            document.getElementById('live-indicator').style.display = 'inline-block';
+            document.getElementById('temp-label').textContent = 'Live data streaming';
+        }
+
+        if (topic === 'aquarium/sensor/temperature') {
+            const v = payload.value;
+            const el = document.getElementById('temp-value');
+            el.textContent = v + ' °C';
+            el.className = `metric temp ${v > 28.5 ? 'crit' : 'ok'}`;
+        }
+
+        if (topic === 'aquarium/sensor/status') {
+            const online = payload.status === 'ONLINE';
+            const dot    = document.getElementById('sensor-dot');
+            dot.className = 'dot ' + (online ? 'online' : 'offline');
+            document.getElementById('sensor-status').textContent = `Sensor: ${payload.status}`;
+            logFeature('F#7 LWT', `Sensor_Node status → ${payload.status}`);
+        }
+
+        if (topic === 'aquarium/dispenser/status') {
+            const online = payload.status === 'ONLINE';
+            const dot    = document.getElementById('dispenser-dot');
+            dot.className = 'dot ' + (online ? 'online' : 'offline');
+            document.getElementById('dispenser-status').textContent = `Dispenser: ${payload.status}`;
+            logFeature('F#7 LWT', `Dispenser_Node status → ${payload.status}`);
+        }
+
+        if (topic === 'aquarium/dispenser/stock') {
+            const pct  = payload.stock;
+            document.getElementById('stock-pct').textContent = pct;
+            const fill = document.getElementById('stock-fill');
+            fill.style.width      = pct + '%';
+            fill.style.background = pct < 20 ? '#f85149' : pct < 40 ? '#d29922' : '#3fb950';
+            logFeature('F#5 RETAIN', `Stock update (retained): ${pct}%`);
+        }
+
+        if (topic === 'aquarium/alert') {
+            addAlert(payload);
+            logFeature('ALERT', `${payload.level}: ${payload.message}`);
+        }
+
+        // ── [FEATURE 8] Request-Response — stock reply ──────────────────
+        if (topic === RESPONSE_TOPIC) {
+            const corrId = packet.properties?.correlationData?.toString() || 'N/A';
+            logFeature('F#8 REQ-RES', `Stock response received: ${payload.stock}% | CorrelID: ${corrId.slice(-10)}`);
+        }
+
+        // ── [FEATURE 4] User Properties ─────────────────────────────────
+        const up = packet.properties?.userProperties;
+        if (up) {
+            if (up.Device_ID) document.getElementById('meta-device').textContent   = up.Device_ID;
+            if (up.Location)  document.getElementById('meta-location').textContent = up.Location;
+            if (up.Firmware)  document.getElementById('meta-firmware').textContent = up.Firmware;
+            logFeature('F#4 USER-PROP', `Device=${up.Device_ID} Loc=${up.Location} FW=${up.Firmware}`);
+        }
+
+        // ── Topic alias note ─────────────────────────────────────────────
+        // When Sensor_Node uses alias, the MQTT.js broker-side resolves it,
+        // so the web client receives the full topic (transparent to subscriber).
+        if (packet.properties?.topicAlias) {
+            logFeature('F#3 ALIAS', `Alias ${packet.properties.topicAlias} resolved → ${topic}`);
+        }
+    });
+
+    client.on('disconnect', () => {
+        document.getElementById('conn-dot').classList.remove('connected');
+        document.getElementById('conn-label').textContent = 'Disconnected';
+    });
+
+    client.on('error', (err) => {
+        document.getElementById('conn-label').textContent = 'Error: ' + err.message;
+        logFeature('ERROR', err.message);
+    });
+}
+
+// ── [FEATURE 1] QoS 2 + [FEATURE 6] Message Expiry ──────────────────────
+function sendFeedCommand() {
+    const amount = parseInt(document.getElementById('feed-amount').value) || 5;
+
+    const payload = JSON.stringify({
+        action: 'FEED',
+        amount,
+        from:   'Web_Dashboard',
+        ts:     Date.now()
+    });
+
+    // QoS 2 = Exactly Once; messageExpiryInterval = 30 seconds
+    client.publish('aquarium/dispenser/command', payload, {
+        qos: 2,
+        properties: {
+            messageExpiryInterval: 30   // [FEATURE 6] Expires in 30s
+        }
+    });
+
+    logFeature('F#1+F#6', `FEED ${amount}g sent [QoS 2, Expiry 30s]`);
+    showToast(`🐟 Feed command sent: ${amount}g (expires in 30s)`);
+}
+
+// ── [FEATURE 8] Request-Response ─────────────────────────────────────────
+function requestStock() {
+    const correlationId = `stock-${Date.now()}`;
+
+    client.publish('aquarium/request/stock', JSON.stringify({
+        request: 'get_stock',
+        from:    'Web_Dashboard',
+        ts:      Date.now()
+    }), {
+        qos: 1,
+        properties: {
+            responseTopic:   RESPONSE_TOPIC,
+            correlationData: Buffer.from(correlationId)
+        }
+    });
+
+    logFeature('F#8 REQ-RES', `Stock query sent | CorrelID: ${correlationId.slice(-10)}`);
+    showToast('📦 Stock query sent — waiting for response…');
+}
+
+function addAlert(payload) {
+    const ul = document.getElementById('alert-list');
+    const noAlertMsg = document.getElementById('no-alert-msg');
+    if (noAlertMsg) noAlertMsg.remove();
+
+    const li = document.createElement('li');
+    if (payload.level === 'WARNING') li.classList.add('warning');
+    const time = new Date().toLocaleTimeString();
+    li.innerHTML = `<b>${time}</b> [${payload.level}] ${payload.message || JSON.stringify(payload)}`;
+    ul.insertBefore(li, ul.firstChild);
+
+    while (ul.children.length > 8) ul.removeChild(ul.lastChild);
+}
+
+function showToast(msg) {
+    const el = document.createElement('div');
+    el.textContent = msg;
+    Object.assign(el.style, {
+        position: 'fixed', bottom: '20px', right: '20px',
+        background: '#1c2128', border: '1px solid #30363d',
+        color: '#e6edf3', padding: '12px 18px', borderRadius: '10px',
+        fontSize: '.9rem', zIndex: 9999, animation: 'slideIn .3s ease'
+    });
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 3500);
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+connect();
+</script>
+</body>
+</html>

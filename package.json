@@ -1,0 +1,17 @@
+{
+  "name": "smart-aquarium-mqtt",
+  "version": "1.0.0",
+  "description": "Smart Aquarium IoT simulation using MQTT 5.0 — Integrasi Sistem Week 10",
+  "main": "sensor_node.js",
+  "scripts": {
+    "sensor":    "node sensor_node.js",
+    "dispenser": "node dispenser_node.js",
+    "user":      "node user_app.js",
+    "dashboard": "node main_dashboard_cli.js",
+    "alertbot1": "node alert_bot.js 1",
+    "alertbot2": "node alert_bot.js 2"
+  },
+  "dependencies": {
+    "mqtt": "^5.0.0"
+  }
+}
