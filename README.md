@@ -19,7 +19,7 @@ Proyek ini adalah simulasi sistem *Internet of Things* (IoT) untuk *Smart Aquari
 - **Subscriber 1 (Main Dashboard):** Menerima seluruh data dari sensor dan aktuator untuk divisualisasikan secara *real-time* berbasis Web (HTML/JS).
 - **Subscriber 2 (Alert Bot):** Menerima notifikasi darurat (berjalan secara berkelompok/ *Load Balancing*).
 
- [gambar]
+ ![image alt](https://github.com/sipalingnub/MQTT-Smart-Aquarium/blob/a8db388abbb719e4a1048fa9bea9a47f927cdf67/common/mermaid-drawing.png)
 
 ## 3. Design Topic (Topic Tree)
 Desain hierarki topik dirancang dengan struktur yang rapi agar mudah di-*filter* menggunakan *wildcard*:
@@ -31,8 +31,6 @@ Desain hierarki topik dirancang dengan struktur yang rapi agar mudah di-*filter*
 - `aquarium/alert` : Topik khusus untuk pesan darurat dan *Last Will and Testament* (LWT).
 
 ## 4. Fitur-fitur MQTT 5.0 (Penjelasan dan Hasil)
-
-*(Catatan: Ambil screenshot terminal Node.js atau Browser kamu saat program berjalan dan tempel di bawah masing-masing poin ini untuk laporan)*
 
 1. **Publish/Subscribe & QoS:** Pengiriman data sensor menggunakan QoS 0, sedangkan perintah kritis "Beri Makan" menggunakan QoS 2 (*Exactly Once*).
    > **Screenshot:** `[Masukkan gambar terminal User App mengirim perintah QoS 2 dan diterima oleh Dispenser]`
@@ -48,6 +46,10 @@ Desain hierarki topik dirancang dengan struktur yang rapi agar mudah di-*filter*
 9. **Shared Subscriptions:** Menjalankan beberapa Alert Bot sekaligus dengan topik `$share/botgroup/aquarium/alert` agar notifikasi terdistribusi (satu pesan hanya diterima satu bot).
    > **Screenshot:** `[Masukkan gambar 2 terminal Alert Bot berdampingan, tunjukkan pesan hanya masuk ke salah satu terminal saja]`
 10. **Flow Control:** Dashboard membatasi *Receive Maximum* untuk mengontrol *backpressure* (menghindari *overload* pesan yang masuk secara bersamaan).
+
+![image alt](https://github.com/sipalingnub/MQTT-Smart-Aquarium/blob/a8db388abbb719e4a1048fa9bea9a47f927cdf67/common/Screenshot%202026-05-13%20200429.png)
+
+![image alt](https://github.com/sipalingnub/MQTT-Smart-Aquarium/blob/a8db388abbb719e4a1048fa9bea9a47f927cdf67/common/Screenshot%202026-05-13%20200434.png)
 
 ## 5. Dashboard Monitor
 Dashboard merupakan antarmuka web interaktif (`dashboard.html`) yang terhubung langsung ke broker MQTT melalui WebSockets.
